@@ -125,7 +125,7 @@ func AddHomePage(schemaPath string) func(*RestSever) {
 				URL:      r.URL.String(),
 			}
 
-			tmpl := template.Must(template.ParseFiles("./assets/home-template.html"))
+			tmpl := template.Must(template.ParseFiles("./assets/home-template.gohtmltmpl"))
 			err := tmpl.Execute(w, page)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
