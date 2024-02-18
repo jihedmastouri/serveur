@@ -1,6 +1,7 @@
 package main
 
 import (
+	"html/template"
 	"log/slog"
 	"net/http"
 	"time"
@@ -12,16 +13,19 @@ import (
 )
 
 type RestSever struct {
-	mux *chi.Mux
+	mux      *chi.Mux
+	entities []Entity
 }
 
-func NewRestServer(options ...func(*RestSever)) *RestSever {
-	r := chi.NewRouter()
-	r.Use(middleware.Heartbeat("/ping"))
-	r.Use(middleware.Recoverer)
+func NewRestServer(entities []Entity, options ...func(*RestSever)) *RestSever {
+	mux := chi.NewRouter()
+	mux.Use(middleware.RedirectSlashes)
+	mux.Use(middleware.Heartbeat("/ping"))
+	mux.Use(middleware.Recoverer)
 
 	server := &RestSever{
-		mux: r,
+		mux,
+		entities,
 	}
 
 	for _, opt := range options {
@@ -56,11 +60,9 @@ func AddLogger() func(*RestSever) {
 	}
 }
 
-func AddHomePage(s *RestSever) {}
-
-func (s *RestSever) InitRouter(entities []Entity) {
-	for _, entity := range entities {
-		basePath := "/" + entity.name + "/"
+func (s *RestSever) InitRouter() {
+	for _, entity := range s.entities {
+		basePath := "/" + entity.Name
 		s.mux.Route(basePath, func(r chi.Router) {
 			r.Post("/", func(w http.ResponseWriter, r *http.Request) {
 				w.Write([]byte("Hello, World!"))
@@ -100,5 +102,35 @@ func Response(fn func() ([]byte, error)) func(http.ResponseWriter, *http.Request
 			render.JSON(w, r, map[string]string{"error": err.Error()})
 		}
 		render.JSON(w, r, data)
+	}
+}
+
+func AddStaticFiles(path string) func(*RestSever) {
+	return func(s *RestSever) {
+		s.mux.Handle("/*", http.FileServer(http.Dir(path)))
+	}
+}
+
+func AddHomePage(schemaPath string) func(*RestSever) {
+	return func(s *RestSever) {
+		s.mux.Get("/", func(w http.ResponseWriter, r *http.Request) {
+			// Define the data to be passed to the template
+			page := struct {
+				Schema   string
+				Entities []Entity
+				URL      string
+			}{
+				Schema:   schemaPath,
+				Entities: s.entities,
+				URL:      r.URL.String(),
+			}
+
+			tmpl := template.Must(template.ParseFiles("./assets/home-template.html"))
+			err := tmpl.Execute(w, page)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		})
 	}
 }

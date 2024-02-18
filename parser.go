@@ -6,8 +6,9 @@ type Field struct {
 }
 
 type Entity struct {
-	name   string
-	fields map[string]any
+	Name   string
+	Count  int
+	Fields map[string]any
 }
 
 type FieldType string
