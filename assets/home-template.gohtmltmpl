@@ -188,7 +188,7 @@
 				<p> Count: {{.Count}}</p>
 				<p> Schema: </p>
 				<ul>
-					{{range $field, $type := .Fields}}
+					{{range $field, $type := .Schema}}
 					<li>{{$field}}: <code>{{$type}}</code></li>
 					{{end}}
 				</ul>
