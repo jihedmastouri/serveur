@@ -6,6 +6,13 @@ import (
 	badger "github.com/dgraph-io/badger/v4"
 )
 
+type Store interface {
+	GetAll(entityname string, size int) (error, [][]byte)
+	Get(entityname string, key []byte) (error, []byte)
+	Set(entityname string, key []byte, value []byte) error
+	Delete(entityname string, key []byte) error
+}
+
 type DB struct {
 	db *badger.DB
 }

@@ -2,10 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"reflect"
 
 	"github.com/fsnotify/fsnotify"
 )
@@ -42,6 +44,8 @@ const (
 	ParagraphType           = "paragraph,pg"
 )
 
+// Initializes a file watcher and returns the path to the file and the watcher
+// If the path is a url, it downloads the file and returns the path to the downloaded file
 func initFile(path string, extension string) (string, *fsnotify.Watcher) {
 	u, err := url.ParseRequestURI(path)
 	if err == nil {
@@ -62,6 +66,7 @@ func initFile(path string, extension string) (string, *fsnotify.Watcher) {
 	return path, watcher
 }
 
+// Parses a json file and returns a slice of entities
 func ParseFile(path string) ([]Entity, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -74,6 +79,17 @@ func ParseFile(path string) ([]Entity, error) {
 	err = decoder.Decode(&entities)
 	if err != nil {
 		return nil, err
+	}
+	for i, entity := range entities {
+		entities[i].Count = 1
+		for j, field := range entity.Schema {
+			if field.Kind == "" {
+				entities[i].Schema[j].Kind = StringType
+			}
+			if reflect.TypeOf(field.Kind).Name() != "FieldType" {
+				fmt.Println("Invalid Type: ", field.Kind)
+			}
+		}
 	}
 	return entities, nil
 }

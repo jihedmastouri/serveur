@@ -35,6 +35,8 @@ func NewRestServer(entities []Entity, options ...func(*RestSever)) *RestSever {
 	return server
 }
 
+// Middleware: Adds a logger to the server
+// TODO: This is a placeholder, it should be replaced with a real logger
 func AddLogger() func(*RestSever) {
 	return func(s *RestSever) {
 		logger := httplog.NewLogger("serveur", httplog.Options{
@@ -60,6 +62,7 @@ func AddLogger() func(*RestSever) {
 	}
 }
 
+// Generates CRUD routes for each entity
 func (s *RestSever) InitRouter() {
 	for _, entity := range s.entities {
 		basePath := "/" + entity.Name
@@ -88,12 +91,15 @@ func (s *RestSever) InitRouter() {
 	}
 }
 
-func paginate(next http.Handler) http.Handler {
+// Middleware: Adds pagination to the server
+// TODO: implement pagination
+func Paginate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		next.ServeHTTP(w, r)
 	})
 }
 
+// Helper function to return a json response
 func Response(fn func() ([]byte, error)) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		data, err := fn()
@@ -105,12 +111,14 @@ func Response(fn func() ([]byte, error)) func(http.ResponseWriter, *http.Request
 	}
 }
 
+// Middleware: Adds a static file server
 func AddStaticFiles(path string) func(*RestSever) {
 	return func(s *RestSever) {
 		s.mux.Handle("/*", http.FileServer(http.Dir(path)))
 	}
 }
 
+// Middleware: Adds a home page to the server similar to Swagger
 func AddHomePage(schemaPath string) func(*RestSever) {
 	return func(s *RestSever) {
 		s.mux.Get("/", func(w http.ResponseWriter, r *http.Request) {

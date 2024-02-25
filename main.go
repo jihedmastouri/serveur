@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/cobra"
@@ -65,12 +66,12 @@ Each entity will be served at a different endpoint (the same way "json-server" d
 		// and that we don't need flag for providing file and a url
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		// isInMemory, err := cmd.Flags().GetBool("memmory")
-		// if err != nil {
-		// 	log.Fatal("Couldn't get the memmory flag")
-		// }
-		// db := NewDB(isInMemory)
-		// defer db.Close()
+		isInMemory, err := cmd.Flags().GetBool("memmory")
+		if err != nil {
+			log.Fatal("Couldn't get the memmory flag")
+		}
+		db := NewDB(isInMemory)
+		defer db.Close()
 
 		m := make(map[string]any)
 		m["name"] = "str"
@@ -97,6 +98,8 @@ Each entity will be served at a different endpoint (the same way "json-server" d
 			ErrExit("Couldn't parse the schema file:", err)
 		}
 
+		FillDatabase(entities, db)
+
 		server := NewRestServer(
 			entities,
 			AddLogger(),
@@ -114,21 +117,27 @@ Each entity will be served at a different endpoint (the same way "json-server" d
 
 		for {
 			event := <-watcher.Events
+
 			if event.Has(fsnotify.Rename) {
+				// HACK: The only way I found to makr sure I keep watching the file :(
 				watcher.Remove(event.Name)
 				watcher.Add(event.Name)
 			}
+
+			// To not spam the server with multiple events
+			time.Sleep(1 * time.Second)
+
 			if event.Has(fsnotify.Write) || event.Has(fsnotify.Rename) {
 				entities, err := ParseFile(event.Name)
 				if err != nil {
 					log.Println("Couldn't parse the schema file:", err)
 					continue
 				}
-				// err = srv.Shutdown(context.Background())
-				// if err != nil {
-				// 	ErrExit("Couldn't shutdown the server:", err)
-				// }
-				// fmt.Println("Server is shutting down...")
+
+				db.Close()
+				db = NewDB(isInMemory)
+				FillDatabase(entities, db)
+
 				server := NewRestServer(
 					entities,
 					AddLogger(),
