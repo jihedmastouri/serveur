@@ -13,17 +13,19 @@ import (
 )
 
 type RestSever struct {
+	db       Store
 	mux      *chi.Mux
 	entities []Entity
 }
 
-func NewRestServer(entities []Entity, options ...func(*RestSever)) *RestSever {
+func NewRestServer(db Store, entities []Entity, options ...func(*RestSever)) *RestSever {
 	mux := chi.NewRouter()
 	mux.Use(middleware.RedirectSlashes)
 	mux.Use(middleware.Heartbeat("/ping"))
 	mux.Use(middleware.Recoverer)
 
 	server := &RestSever{
+		db,
 		mux,
 		entities,
 	}
@@ -33,6 +35,22 @@ func NewRestServer(entities []Entity, options ...func(*RestSever)) *RestSever {
 	}
 
 	return server
+}
+
+// Generates CRUD routes for each entity
+func (s *RestSever) InitRouter() {
+	for _, entity := range s.entities {
+		s.mux.Route("/"+entity.Name, func(r chi.Router) {
+			r.Post("/", PostHandler(entity.Name, s.db))
+			r.Get("/", GetAllHandler(entity.Name, s.db))
+			r.Route("/{id}", func(r chi.Router) {
+				r.Get("/", GetHandler(entity.Name, s.db))
+				r.Delete("/", DeleteHandler(entity.Name, s.db))
+				r.Put("/", PutHandler(entity.Name, s.db))
+				r.Patch("/", PatchHandler(entity.Name, s.db))
+			})
+		})
+	}
 }
 
 // Middleware: Adds a logger to the server
@@ -59,35 +77,6 @@ func AddLogger() func(*RestSever) {
 		})
 
 		s.mux.Use(httplog.RequestLogger(logger))
-	}
-}
-
-// Generates CRUD routes for each entity
-func (s *RestSever) InitRouter() {
-	for _, entity := range s.entities {
-		basePath := "/" + entity.Name
-		s.mux.Route(basePath, func(r chi.Router) {
-			r.Post("/", func(w http.ResponseWriter, r *http.Request) {
-				w.Write([]byte("Hello, World!"))
-			})
-			r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-				w.Write([]byte("Hello, World!"))
-			})
-			r.Route("/{id}", func(r chi.Router) {
-				r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-					w.Write([]byte("Hello, World!"))
-				})
-				r.Delete("/", func(w http.ResponseWriter, r *http.Request) {
-					w.Write([]byte("Hello, World!"))
-				})
-				r.Put("/", func(w http.ResponseWriter, r *http.Request) {
-					w.Write([]byte("Hello, World!"))
-				})
-				r.Patch("/", func(w http.ResponseWriter, r *http.Request) {
-					w.Write([]byte("Hello, World!"))
-				})
-			})
-		})
 	}
 }
 

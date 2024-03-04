@@ -70,15 +70,9 @@ Each entity will be served at a different endpoint (the same way "json-server" d
 		if err != nil {
 			log.Fatal("Couldn't get the memmory flag")
 		}
+
 		db := NewDB(isInMemory)
 		defer db.Close()
-
-		m := make(map[string]any)
-		m["name"] = "str"
-		m["title"] = "str"
-		m2 := make(map[string]any)
-		m2["name"] = "str"
-		m2["title"] = "str"
 
 		staticPath, err := cmd.Flags().GetString("static")
 		if err != nil {
@@ -90,6 +84,8 @@ Each entity will be served at a different endpoint (the same way "json-server" d
 			schemaPath = args[0]
 		}
 
+		// Download the schema file if it's a url
+		// Watch the schema file for changes
 		path, watcher := initFile(schemaPath, "json")
 		defer watcher.Close()
 
@@ -100,7 +96,9 @@ Each entity will be served at a different endpoint (the same way "json-server" d
 
 		FillDatabase(entities, db)
 
+		// Initialize the server
 		server := NewRestServer(
+			db,
 			entities,
 			AddLogger(),
 			AddHomePage(schemaPath),
@@ -111,6 +109,8 @@ Each entity will be served at a different endpoint (the same way "json-server" d
 			Addr:    fmt.Sprintf(":%d", 3000),
 			Handler: server.mux,
 		}
+
+		// Start the server
 		go func() {
 			log.Fatal(srv.ListenAndServe())
 		}()
@@ -127,6 +127,7 @@ Each entity will be served at a different endpoint (the same way "json-server" d
 			// To not spam the server with multiple events
 			time.Sleep(1 * time.Second)
 
+			// If the file is written to or renamed (which is the case when the file is saved in an editor)
 			if event.Has(fsnotify.Write) || event.Has(fsnotify.Rename) {
 				entities, err := ParseFile(event.Name)
 				if err != nil {
@@ -134,11 +135,14 @@ Each entity will be served at a different endpoint (the same way "json-server" d
 					continue
 				}
 
+				// Close the previous db and create a new one
 				db.Close()
 				db = NewDB(isInMemory)
 				FillDatabase(entities, db)
 
+				// Close the previous server and create a new one
 				server := NewRestServer(
+					db,
 					entities,
 					AddLogger(),
 					AddHomePage(schemaPath),
