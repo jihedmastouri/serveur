@@ -7,8 +7,8 @@ import (
 )
 
 type Store interface {
-	GetAll(entityname string, validator Validtor) (error, [][]byte)
-	Get(entityname string, key []byte) (error, []byte)
+	GetAll(entityname string, validator Validtor) ([][]byte, error)
+	Get(entityname string, key []byte) ([]byte, error)
 	Set(entityname string, key []byte, value []byte) error
 	Delete(entityname string, key []byte) error
 	Patch(entityname string, key []byte, value []byte) error
@@ -39,7 +39,7 @@ func (db *DB) Close() {
 	db.db.Close()
 }
 
-func (db *DB) GetAll(entityname string, valid Validtor) (error, [][]byte) {
+func (db *DB) GetAll(entityname string, valid Validtor) ([][]byte, error) {
 	result := make([][]byte, 0)
 	var err error
 	prefix := []byte(entityname)
@@ -70,12 +70,12 @@ func (db *DB) GetAll(entityname string, valid Validtor) (error, [][]byte) {
 		return nil
 	})
 	if err != nil {
-		return err, nil
+		return nil, err
 	}
-	return nil, result
+	return result, nil
 }
 
-func (db *DB) Get(entityname string, key []byte) (error, []byte) {
+func (db *DB) Get(entityname string, key []byte) ([]byte, error) {
 	var result []byte
 	err := db.db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get(append([]byte(entityname+"-"), key...))
@@ -92,9 +92,9 @@ func (db *DB) Get(entityname string, key []byte) (error, []byte) {
 		return nil
 	})
 	if err != nil {
-		return err, nil
+		return nil, err
 	}
-	return nil, result
+	return result, nil
 }
 
 func (db *DB) Set(entityname string, key []byte, value []byte) error {
