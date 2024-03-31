@@ -7,7 +7,7 @@ import (
 )
 
 type Store interface {
-	GetAll(entityname string, validator Validtor) ([][]byte, error)
+	GetAll(entityname string, validator *Validtor) ([][]byte, error)
 	Get(entityname string, key []byte) ([]byte, error)
 	Set(entityname string, key []byte, value []byte) error
 	Delete(entityname string, key []byte) error
@@ -39,7 +39,7 @@ func (db *DB) Close() {
 	db.db.Close()
 }
 
-func (db *DB) GetAll(entityname string, valid Validtor) ([][]byte, error) {
+func (db *DB) GetAll(entityname string, valid *Validtor) ([][]byte, error) {
 	result := make([][]byte, 0)
 	var err error
 	prefix := []byte(entityname)

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"html/template"
 	"io"
 	"log/slog"
@@ -43,7 +44,7 @@ func NewRestServer(db Store, entities []Entity, options ...func(*RestSever)) *Re
 func (s *RestSever) InitRouter() {
 	for _, entity := range s.entities {
 		s.mux.Route("/"+entity.Name, func(r chi.Router) {
-			r.Post("/", s.PostHandler(entity.Name))
+			r.Post("/", Response(s.PostHandler(entity.Name)))
 			r.Get("/", s.GetAllHandler(entity.Name))
 			r.Route("/{id}", func(r chi.Router) {
 				r.Get("/", s.GetHandler(entity.Name))
@@ -130,52 +131,71 @@ func AddHomePage(schemaPath string) func(*RestSever) {
 * Handlers
 *************/
 
-func (s *RestSever) PostHandler(entityName string) func(http.ResponseWriter, *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
+func (s *RestSever) PostHandler(entityName string) func(*http.Request) ([]byte, *ResError) {
+	return func(r *http.Request) ([]byte, *ResError) {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
+			return nil, &ResError{
+				Error:  err.Error(),
+				Status: http.StatusBadRequest,
+			}
 		}
 		defer r.Body.Close()
 
 		var params map[string]interface{}
-		error := json.Unmarshal(body, &params)
-		if error != nil {
-			render.Status(r, http.StatusBadRequest)
-			render.JSON(w, r, map[string]string{"error": err.Error()})
-			return
+		err = json.Unmarshal(body, &params)
+		if err != nil {
+			return nil, &ResError{
+				Error:  errors.New("invalid json").Error(),
+				Status: http.StatusBadRequest,
+			}
 		}
+
 		if params["id"] == nil {
-			render.Status(r, http.StatusBadRequest)
-			render.JSON(w, r, map[string]string{"error": "id is required"})
-			return
+			return nil, &ResError{
+				Error:  errors.New("id is Required").Error(),
+				Status: http.StatusBadRequest,
+			}
 		}
 
 		err = s.db.Set(entityName, []byte(params["id"].(string)), []byte(body))
 		if err != nil {
-			render.Status(r, http.StatusInternalServerError)
-			render.JSON(w, r, map[string]string{"error": err.Error()})
-			return
+			return nil, &ResError{
+				Error:  err.Error(),
+				Status: http.StatusInternalServerError,
+			}
 		}
-		render.JSON(w, r, map[string]string{"status": "ok"})
+		return []byte(`{"status": "ok"}`), nil
 	}
 }
 
 func (s *RestSever) GetAllHandler(entityName string) func(http.ResponseWriter, *http.Request) {
-	return Response(s.db.GetAll(entityName, nil))
+	res, err := s.db.GetAll(entityName, nil)
+	if err != nil {
+		return &ResError{
+			Error:  err.Error(),
+			Status: http.StatusInternalServerError,
+		}
+	}
+	return res, nil
 }
 
 func (s *RestSever) GetHandler(entityName string) func(http.ResponseWriter, *http.Request) {
-	return Response(func(r *http.Request) ([]byte, error) {
-		id := r.URL.Query().Get("id")
-		if id == "" {
-			render.Status(r, http.StatusBadRequest)
-			render.JSON(w, r, map[string]string{"error": "id is required"})
-			return
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		return &ResError{
+			Error:  errors.New("id is required").Error(),
+			Status: http.StatusBadRequest,
 		}
-		return s.db.Get(entityName, []byte(id))
-	})
+	}
+	res, err := s.db.Get(entityName, []byte(id))
+	if err != nil {
+		return &ResError{
+			Error:  err.Error(),
+			Status: http.StatusInternalServerError,
+		}
+	}
+	return res, nil
 }
 
 func (s *RestSever) DeleteHandler(entityName string) func(http.ResponseWriter, *http.Request) {

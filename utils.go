@@ -18,13 +18,18 @@ func ErrExit(exitMsg string, err error) {
 	os.Exit(1)
 }
 
+type ResError struct {
+	Error  string `json:"error"`
+	Status int    `json:"status"`
+}
+
 // Helper function to return a json response
-func Response(fn func(*http.Request) ([]byte, error)) func(http.ResponseWriter, *http.Request) {
+func Response(fn func(*http.Request) ([]byte, *ResError)) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		data, err := fn(r)
 		if err != nil {
-			render.Status(r, http.StatusInternalServerError)
-			render.JSON(w, r, map[string]string{"error": err.Error()})
+			render.Status(r, err.Status)
+			render.JSON(w, r, map[string]string{"error": err.Error})
 		}
 		render.JSON(w, r, data)
 	}
