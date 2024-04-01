@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/httplog/v2"
+	"github.com/go-chi/render"
 )
 
 type RestSever struct {
@@ -281,4 +282,39 @@ func (s *RestSever) PatchHandler(entityName string) handlerResponse {
 		}
 		return []byte(SuccessMessage), nil
 	}
+}
+
+/*************
+* Utils
+*************/
+
+type ResError struct {
+	Error  string `json:"error"`
+	Status int    `json:"status"`
+}
+
+const SuccessMessage = "{\"message\": \"ok\"}"
+
+type handlerResponse func(*http.Request) ([]byte, *ResError)
+
+// Helper function to return a json response
+func Response(fn func(*http.Request) ([]byte, *ResError)) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		data, err := fn(r)
+		if err != nil {
+			render.Status(r, err.Status)
+			render.JSON(w, r, map[string]string{"error": err.Error})
+		}
+		render.JSON(w, r, data)
+	}
+}
+
+func flattenBytes(twoDBytes [][]byte) []byte {
+	var result []byte
+
+	for _, b := range twoDBytes {
+		result = append(result, b...)
+	}
+
+	return result
 }
