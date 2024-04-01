@@ -12,7 +12,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/httplog/v2"
-	"github.com/go-chi/render"
 )
 
 type RestSever struct {
@@ -45,12 +44,12 @@ func (s *RestSever) InitRouter() {
 	for _, entity := range s.entities {
 		s.mux.Route("/"+entity.Name, func(r chi.Router) {
 			r.Post("/", Response(s.PostHandler(entity.Name)))
-			r.Get("/", s.GetAllHandler(entity.Name))
+			r.Get("/", Response(s.GetAllHandler(entity.Name)))
 			r.Route("/{id}", func(r chi.Router) {
-				r.Get("/", s.GetHandler(entity.Name))
-				r.Delete("/", s.DeleteHandler(entity.Name))
-				r.Put("/", s.PutHandler(entity.Name))
-				r.Patch("/", s.PatchHandler(entity.Name))
+				r.Get("/", Response(s.GetHandler(entity.Name)))
+				r.Delete("/", Response(s.DeleteHandler(entity.Name)))
+				r.Put("/", Response(s.PutHandler(entity.Name)))
+				r.Patch("/", Response(s.PatchHandler(entity.Name)))
 			})
 		})
 	}
@@ -165,106 +164,121 @@ func (s *RestSever) PostHandler(entityName string) func(*http.Request) ([]byte, 
 				Status: http.StatusInternalServerError,
 			}
 		}
-		return []byte(`{"status": "ok"}`), nil
+		return []byte(SuccessMessage), nil
 	}
 }
 
-func (s *RestSever) GetAllHandler(entityName string) func(http.ResponseWriter, *http.Request) {
-	res, err := s.db.GetAll(entityName, nil)
-	if err != nil {
-		return &ResError{
-			Error:  err.Error(),
-			Status: http.StatusInternalServerError,
+func (s *RestSever) GetAllHandler(entityName string) handlerResponse {
+	return func(r *http.Request) ([]byte, *ResError) {
+		res, err := s.db.GetAll(entityName, nil)
+		if err != nil {
+			return nil, &ResError{
+				Error:  err.Error(),
+				Status: http.StatusInternalServerError,
+			}
 		}
+		return flattenBytes(res), nil
 	}
-	return res, nil
 }
 
-func (s *RestSever) GetHandler(entityName string) func(http.ResponseWriter, *http.Request) {
-	id := r.URL.Query().Get("id")
-	if id == "" {
-		return &ResError{
-			Error:  errors.New("id is required").Error(),
-			Status: http.StatusBadRequest,
-		}
-	}
-	res, err := s.db.Get(entityName, []byte(id))
-	if err != nil {
-		return &ResError{
-			Error:  err.Error(),
-			Status: http.StatusInternalServerError,
-		}
-	}
-	return res, nil
-}
-
-func (s *RestSever) DeleteHandler(entityName string) func(http.ResponseWriter, *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
+func (s *RestSever) GetHandler(entityName string) handlerResponse {
+	return func(r *http.Request) ([]byte, *ResError) {
 		id := r.URL.Query().Get("id")
 		if id == "" {
-			render.Status(r, http.StatusBadRequest)
-			render.JSON(w, r, map[string]string{"error": "id is required"})
-			return
+			return nil, &ResError{
+				Error:  errors.New("id is required").Error(),
+				Status: http.StatusBadRequest,
+			}
+		}
+		res, err := s.db.Get(entityName, []byte(id))
+		if err != nil {
+			return nil, &ResError{
+				Error:  err.Error(),
+				Status: http.StatusInternalServerError,
+			}
+		}
+		return res, nil
+	}
+}
+
+func (s *RestSever) DeleteHandler(entityName string) handlerResponse {
+	return func(r *http.Request) ([]byte, *ResError) {
+		id := r.URL.Query().Get("id")
+		if id == "" {
+			return nil, &ResError{
+				Error:  errors.New("id is required").Error(),
+				Status: http.StatusBadRequest,
+			}
 		}
 
 		err := s.db.Delete(entityName, []byte(id))
 		if err != nil {
-			render.Status(r, http.StatusInternalServerError)
-			render.JSON(w, r, map[string]string{"error": err.Error()})
-			return
+			return nil, &ResError{
+				Error:  err.Error(),
+				Status: http.StatusInternalServerError,
+			}
 		}
 
-		render.JSON(w, r, map[string]string{"status": "ok"})
+		return []byte(SuccessMessage), nil
 	}
 }
 
-func (s *RestSever) PutHandler(entityName string) func(http.ResponseWriter, *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
+func (s *RestSever) PutHandler(entityName string) handlerResponse {
+	return func(r *http.Request) ([]byte, *ResError) {
 		id := r.URL.Query().Get("id")
 		if id == "" {
-			render.Status(r, http.StatusBadRequest)
-			render.JSON(w, r, map[string]string{"error": "id is required"})
-			return
+			return nil, &ResError{
+				Error:  errors.New("id is required").Error(),
+				Status: http.StatusBadRequest,
+			}
 		}
 
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
+			return nil, &ResError{
+				Error:  err.Error(),
+				Status: http.StatusBadRequest,
+			}
 		}
 		defer r.Body.Close()
 
 		err = s.db.Set(entityName, []byte(id), body)
 		if err != nil {
-			render.Status(r, http.StatusInternalServerError)
-			render.JSON(w, r, map[string]string{"error": err.Error()})
-			return
+			return nil, &ResError{
+				Error:  err.Error(),
+				Status: http.StatusInternalServerError,
+			}
 		}
-		render.JSON(w, r, map[string]string{"status": "ok"})
+
+		return []byte(SuccessMessage), nil
 	}
 }
 
-func (s *RestSever) PatchHandler(entityName string) func(http.ResponseWriter, *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
+func (s *RestSever) PatchHandler(entityName string) handlerResponse {
+	return func(r *http.Request) ([]byte, *ResError) {
 		id := r.URL.Query().Get("id")
 		if id == "" {
-			render.Status(r, http.StatusBadRequest)
-			render.JSON(w, r, map[string]string{"error": "id is required"})
-			return
+			return nil, &ResError{
+				Error:  errors.New("id is required").Error(),
+				Status: http.StatusBadRequest,
+			}
 		}
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
+			return nil, &ResError{
+				Error:  err.Error(),
+				Status: http.StatusBadRequest,
+			}
 		}
 		defer r.Body.Close()
 
 		err = s.db.Patch(entityName, []byte(id), body)
 		if err != nil {
-			render.Status(r, http.StatusInternalServerError)
-			render.JSON(w, r, map[string]string{"error": err.Error()})
-			return
+			return nil, &ResError{
+				Error:  err.Error(),
+				Status: http.StatusInternalServerError,
+			}
 		}
-		render.JSON(w, r, map[string]string{"status": "ok"})
+		return []byte(SuccessMessage), nil
 	}
 }

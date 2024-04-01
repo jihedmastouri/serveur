@@ -23,6 +23,10 @@ type ResError struct {
 	Status int    `json:"status"`
 }
 
+const SuccessMessage = "{\"message\": \"ok\"}"
+
+type handlerResponse func(*http.Request) ([]byte, *ResError)
+
 // Helper function to return a json response
 func Response(fn func(*http.Request) ([]byte, *ResError)) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -33,4 +37,14 @@ func Response(fn func(*http.Request) ([]byte, *ResError)) func(http.ResponseWrit
 		}
 		render.JSON(w, r, data)
 	}
+}
+
+func flattenBytes(twoDBytes [][]byte) []byte {
+	var result []byte
+
+	for _, b := range twoDBytes {
+		result = append(result, b...)
+	}
+
+	return result
 }
