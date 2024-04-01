@@ -47,7 +47,14 @@ const (
 
 // Initializes a file watcher and returns the path to the file and the watcher
 // If the path is a url, it downloads the file and returns the path to the downloaded file
-func initFile(path string, extension string) (string, *fsnotify.Watcher) {
+func initFile(path string) (string, *fsnotify.Watcher) {
+	downloadFile(path)
+	watcher, _ := fsnotify.NewWatcher()
+	watcher.Add(path)
+	return path, watcher
+}
+
+func downloadFile(path string) {
 	u, err := url.ParseRequestURI(path)
 	if err == nil {
 		resp, err := http.Get(u.String())
@@ -59,12 +66,8 @@ func initFile(path string, extension string) (string, *fsnotify.Watcher) {
 		if err != nil {
 			ErrExit("Couldn't Read Remote File", err)
 		}
-		path = "./schema." + extension
 		os.WriteFile(path, content, 0644)
 	}
-	watcher, _ := fsnotify.NewWatcher()
-	watcher.Add(path)
-	return path, watcher
 }
 
 // Parses a json file and returns a slice of entities

@@ -24,13 +24,13 @@ func main() {
 	rootCmd.Flags().StringP("out-dump", "o", "", "Path to the dump file. the output will be a json file")
 	rootCmd.Flags().StringP("ingest", "i", "", "Path to the ingest file. It should be a json file. If schema is provided, it will be used to validate the data")
 	rootCmd.Flags().BoolP("memmory", "m", false, "Run the server in memmory mode. No data will be persisted")
-	rootCmd.Flags().IntP("port", "p", 8080, "Port to listen on")
+	rootCmd.Flags().IntP("port", "p", 3000, "Port to listen on")
 	rootCmd.Flags().BoolP("verbose", "v", false, "Verbose mode")
 	rootCmd.Flags().StringP("log", "l", "serveur.log.txt", "write logs to a specific file")
-	rootCmd.Flags().StringP("ext", "e", "json", "specify the file extension for the schema file")
 
 	rootCmd.AddCommand(checkCmd)
 	rootCmd.AddCommand(genCmd)
+	rootCmd.AddCommand(initCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)

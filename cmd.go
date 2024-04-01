@@ -1,59 +1,147 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/cobra"
 )
 
+var genCmd = &cobra.Command{
+	Use:       "gen",
+	Short:     "Generate fake data from a schema file",
+	Example:   "gen ./schema.json",
+	ValidArgs: []string{"schema-file", "data-file"},
+	Run: func(cmd *cobra.Command, args []string) {
+		schemaPath := "./schema.json"
+		if len(args) != 0 && args[0] != "" {
+			schemaPath = args[0]
+		}
+		downloadFile(schemaPath)
+
+		dataPath := "./db.json"
+		if len(args) != 0 && args[1] != "" {
+			dataPath = args[1]
+		}
+
+		// TODO: Below code must be extracted to a function
+		file, err := os.Create(dataPath)
+		if err != nil {
+			ErrExit("Couldn't create the output file", err)
+		}
+
+		encoder := json.NewEncoder(file)
+
+		entities, err := ParseFile(schemaPath)
+		if err != nil {
+			ErrExit("Couldn't parse the schema file", err)
+		}
+
+		for _, entity := range entities {
+			go func(entity Entity) {
+				data, err := GenerateFakeData(entity.Schema)
+				if err != nil {
+					ErrExit("Couldn't generate fake data", err)
+				}
+				err = encoder.Encode(data)
+				if err != nil {
+					ErrExit("Couldn't write to the output file", err)
+				}
+			}(entity)
+		}
+
+	},
+}
+
+var checkCmd = &cobra.Command{
+	Use:     "check",
+	Short:   "Validate a data file against a schema file",
+	Example: "check ./schema.json ./db.json",
+	Run:     func(cmd *cobra.Command, args []string) {},
+}
+
+var initCmd = &cobra.Command{
+	Use:     "init",
+	Short:   "Initialize a new schema file",
+	Example: "init ./schema.json",
+	Run: func(cmd *cobra.Command, args []string) {
+		schemaPath := "./schema.json"
+		if len(args) != 0 && args[0] != "" {
+			schemaPath = args[0]
+		}
+
+		file, err := os.Create(schemaPath)
+		if err != nil {
+			ErrExit("Couldn't create the schema file", err)
+		}
+
+		encoder := json.NewEncoder(file)
+		encoder.Encode([]Entity{})
+	},
+}
+
 var rootCmd = &cobra.Command{
 	Use:   "serveur",
 	Short: "A mock server with auto-generated data.",
 	Long: `Serveur is a mock server for testing purposes.
 Provided with a schema file, Serveur will generate fake data and spin-up a http server.
-the schema file should be a JSON with the following structure:
-	{
-		"entity1": {
-			"count": 10, // number of records to generate
-			"fileds": {
-				"field1": "type",
-				"field2": "type",
-				...
-			}
-		},
-		"entity2": {
-			"count": 10,
-			"fileds": {
-				"field1": "type",
-				"field2": "type",
-				...
-			}
-		},
-		...
+
+Each entity will be served at a different endpoint:
+
+- GET ` + "`/entityName`" + ` (all)
+- POST ` + "`/entityName`" + `
+
+- GET ` + "`/entityName/:id`" + `
+- PUT ` + "`/entityName/:id`" + `
+- Patch ` + "`/entityName/:id`" + `
+- DELETE ` + "`/entityName/:id`" + `
+
+The server will also provide a home page at ` + "`/`" + ` where you can test the endpoints.
+Something in the lines of Swagger UI.
+
+You can also provide a static directory to serve static files.
+
+The schema file can be provided as a local file or a url.
+It should be a JSON with the following structure:
+
+{
+  "entity1": {
+    "count": 10, // number of records to generate
+    "fileds": {
+      "field1": "<type>",
+      "field2": "<type>",
+      ...
 	}
-The types can be one of the following:
-	- str / string
-	- num / number
-	- bool
-	- date
-	- email
-	- url
-	- ip
-	- uuid
-	- id
-	- name
-	- username
-	- fullname
-	- address / addr
-	- phone
-	- paragraph / pg
-	- ref
-The file can be provided as a local file or a url.
-Each entity will be served at a different endpoint (the same way "json-server" does it).
+  },
+  "entity2": {
+	...
+  },
+  ...
+}
+
+A field can be one of these types:
+
+- string/str
+- number/num
+- bool
+- date
+- email
+- url
+- ip
+- uuid
+- id
+- name
+- username
+- fullname
+- addr
+- phone
+- paragraph/pg
+- ref
 	`,
 	Example:   "serveur ./schema.json --port 8080",
 	ValidArgs: []string{
@@ -75,6 +163,11 @@ Each entity will be served at a different endpoint (the same way "json-server" d
 			ErrExit("Couldn't get the db-path flag", err)
 		}
 
+		port, err := cmd.Flags().GetInt("port")
+		if err != nil {
+			ErrExit("Couldn't get the port flag", err)
+		}
+
 		db := NewDB(isInMemory, dbPath)
 		defer db.Close()
 
@@ -90,7 +183,7 @@ Each entity will be served at a different endpoint (the same way "json-server" d
 
 		// Download the schema file if it's a url
 		// Watch the schema file for changes
-		path, watcher := initFile(schemaPath, "json")
+		path, watcher := initFile(schemaPath)
 		defer watcher.Close()
 
 		entities, err := ParseFile(path)
@@ -120,7 +213,7 @@ Each entity will be served at a different endpoint (the same way "json-server" d
 		)
 		server.InitRouter()
 		srv := &http.Server{
-			Addr:    fmt.Sprintf(":%d", 3000),
+			Addr:    fmt.Sprintf(":%d", port),
 			Handler: server.mux,
 		}
 
@@ -167,39 +260,13 @@ Each entity will be served at a different endpoint (the same way "json-server" d
 					AddStaticFiles(staticPath),
 				)
 				server.InitRouter()
+				srv.Close()
 				srv.Handler = server.mux
-				srv.ListenAndServe()
+
+				go func() {
+					log.Fatal(srv.ListenAndServe())
+				}()
 			}
 		}
 	},
-}
-
-var genCmd = &cobra.Command{
-	Use:       "gen",
-	Short:     "Generate fake data from a schema file",
-	Long:      ``,
-	Example:   "gen ./schema.json",
-	ValidArgs: []string{
-		// file or url
-	},
-	PreRun: func(cmd *cobra.Command, args []string) {
-		// logic to make sure that the flags are valid
-		// and that we don't need flag for providing file and a url
-	},
-	Run: func(cmd *cobra.Command, args []string) {},
-}
-
-var checkCmd = &cobra.Command{
-	Use:       "check",
-	Short:     "Validate a data file against a schema file",
-	Long:      ``,
-	Example:   "check ./schema.json ./db.json",
-	ValidArgs: []string{
-		// file or url
-	},
-	PreRun: func(cmd *cobra.Command, args []string) {
-		// logic to make sure that the flags are valid
-		// and that we don't need flag for providing file and a url
-	},
-	Run: func(cmd *cobra.Command, args []string) {},
 }
