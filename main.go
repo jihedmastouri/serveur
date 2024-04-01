@@ -71,7 +71,12 @@ Each entity will be served at a different endpoint (the same way "json-server" d
 			log.Fatal("Couldn't get the memmory flag")
 		}
 
-		db := NewDB(isInMemory)
+		dbPath, err := cmd.Flags().GetString("db-path")
+		if err != nil {
+			log.Fatal("Couldn't get the db-path flag")
+		}
+
+		db := NewDB(isInMemory, dbPath)
 		defer db.Close()
 
 		staticPath, err := cmd.Flags().GetString("static")
@@ -94,7 +99,17 @@ Each entity will be served at a different endpoint (the same way "json-server" d
 			ErrExit("Couldn't parse the schema file:", err)
 		}
 
-		FillDatabase(entities, db)
+		isForceRefresh, err := cmd.Flags().GetBool("refresh")
+		if err != nil {
+			log.Fatal("Couldn't get the refresh flag")
+		}
+
+		prevSchema := db.getSchema()
+		isPrevSchemaValid := ValidateSchema(entities, prevSchema)
+		if !isPrevSchemaValid || isForceRefresh {
+			db.storeSchema(entities)
+			FillDatabase(entities, db)
+		}
 
 		// Initialize the server
 		server := NewRestServer(
@@ -135,10 +150,15 @@ Each entity will be served at a different endpoint (the same way "json-server" d
 					continue
 				}
 
-				// Close the previous db and create a new one
-				db.Close()
-				db = NewDB(isInMemory)
-				FillDatabase(entities, db)
+				prevSchema := db.getSchema()
+				isPrevSchemaValid := ValidateSchema(entities, prevSchema)
+				if !isPrevSchemaValid || isForceRefresh {
+					// Close the previous db and create a new one
+					db.Close()
+					db = NewDB(isInMemory, dbPath)
+					FillDatabase(entities, db)
+					db.storeSchema(entities)
+				}
 
 				// Close the previous server and create a new one
 				server := NewRestServer(
@@ -158,7 +178,9 @@ Each entity will be served at a different endpoint (the same way "json-server" d
 
 func main() {
 	rootCmd.Flags().StringP("static", "s", "", "Path to the static files directory")
-	rootCmd.Flags().StringP("dump", "o", "", "Path to the dump file. the output will be a json file")
+	rootCmd.Flags().BoolP("refresh", "r", false, "ignore the cache and force a refresh of the schema file")
+	rootCmd.Flags().StringP("db-path", "d", "./db", "Path to the database directory. It will be created if it doesn't exist")
+	rootCmd.Flags().StringP("out-dump", "o", "", "Path to the dump file. the output will be a json file")
 	rootCmd.Flags().StringP("ingest", "i", "", "Path to the ingest file. It should be a json file. If schema is provided, it will be used to validate the data")
 	rootCmd.Flags().BoolP("memmory", "m", false, "Run the server in memmory mode. No data will be persisted")
 	rootCmd.Flags().IntP("port", "p", 8080, "Port to listen on")

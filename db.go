@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 
 	badger "github.com/dgraph-io/badger/v4"
@@ -23,8 +24,10 @@ type Validtor struct {
 	terminate []func([][]byte) bool
 }
 
-func NewDB(isInMemory bool) *DB {
-	opt := badger.DefaultOptions("./db")
+const privateSchema = "__schema"
+
+func NewDB(isInMemory bool, dbPath string) *DB {
+	opt := badger.DefaultOptions(dbPath)
 	if isInMemory {
 		opt = opt.WithInMemory(true)
 	}
@@ -136,6 +139,37 @@ func (db *DB) Patch(entityname string, key []byte, valye []byte) error {
 		}
 		value = append(value, valye...)
 		err = txn.Set(append([]byte(entityname+"-"), key...), value)
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (db *DB) getSchema() []Entity {
+	var result []Entity
+	db.db.View(func(txn *badger.Txn) error {
+		item, err := txn.Get([]byte(privateSchema))
+		if err != nil {
+			return nil
+		}
+		item.Value(func(v []byte) error {
+			json.Unmarshal(v, &result)
+			return nil
+		})
+		return nil
+	})
+	return result
+}
+
+func (db *DB) storeSchema(schema []Entity) error {
+	schemaBytes, err := json.Marshal(schema)
+	if err != nil {
+		return err
+	}
+	err = db.db.Update(func(txn *badger.Txn) error {
+		err := txn.Set([]byte(privateSchema), schemaBytes)
 		return err
 	})
 	if err != nil {

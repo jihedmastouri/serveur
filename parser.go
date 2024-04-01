@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"reflect"
+	"slices"
 
 	"github.com/fsnotify/fsnotify"
 )
@@ -92,4 +93,26 @@ func ParseFile(path string) ([]Entity, error) {
 		}
 	}
 	return entities, nil
+}
+
+func ValidateSchema(entities []Entity, prevSchema []Entity) bool {
+	if len(entities) != len(prevSchema) {
+		return false
+	}
+	for _, entity := range entities {
+		index := slices.IndexFunc(prevSchema, func(e Entity) bool {
+			return e.Name == entity.Name
+		})
+
+		if index == -1 {
+			return false
+		}
+
+		if !(reflect.DeepEqual(entity.Schema, prevSchema[index].Schema) &&
+			entity.Count == prevSchema[index].Count) {
+			return false
+		}
+	}
+
+	return true
 }
