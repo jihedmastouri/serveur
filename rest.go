@@ -5,7 +5,6 @@ import (
 	"errors"
 	"html/template"
 	"io"
-	"log"
 	"log/slog"
 	"net/http"
 	"reflect"
@@ -309,7 +308,6 @@ type handlerResponse func(*http.Request) (any, *ResError)
 func Response(fn func(*http.Request) (any, *ResError)) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		data, err := fn(r)
-		log.Println("data", data)
 		if err != nil {
 			render.Status(r, err.Status)
 			render.JSON(w, r, map[string]string{"error": err.Error})
