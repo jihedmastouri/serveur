@@ -5,14 +5,17 @@ import (
 	"errors"
 	"html/template"
 	"io"
+	"log"
 	"log/slog"
 	"net/http"
+	"reflect"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/httplog/v2"
 	"github.com/go-chi/render"
+	"github.com/go-faker/faker/v4"
 )
 
 type RestSever struct {
@@ -97,6 +100,9 @@ func Paginate(next http.Handler) http.Handler {
 
 // Middleware: Adds a static file server
 func AddStaticFiles(path string) func(*RestSever) {
+	if path == "" {
+		return func(s *RestSever) {}
+	}
 	return func(s *RestSever) {
 		s.mux.Handle("/*", http.FileServer(http.Dir(path)))
 	}
@@ -117,7 +123,12 @@ func AddHomePage(schemaPath string) func(*RestSever) {
 				URL:      r.URL.String(),
 			}
 
+			// tmpl := template.Must(template.New("example").Funcs(template.FuncMap{
+			// 	"kindOf": reflect.TypeOf,
+			// }).Parse(`{{ . | kindOf }}`))
+
 			tmpl := template.Must(template.ParseFiles("./assets/home-template.gohtmltmpl"))
+
 			err := tmpl.Execute(w, page)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -131,8 +142,8 @@ func AddHomePage(schemaPath string) func(*RestSever) {
 * Handlers
 *************/
 
-func (s *RestSever) PostHandler(entityName string) func(*http.Request) ([]byte, *ResError) {
-	return func(r *http.Request) ([]byte, *ResError) {
+func (s *RestSever) PostHandler(entityName string) handlerResponse {
+	return func(r *http.Request) (any, *ResError) {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			return nil, &ResError{
@@ -151,14 +162,12 @@ func (s *RestSever) PostHandler(entityName string) func(*http.Request) ([]byte, 
 			}
 		}
 
-		if params["id"] == nil {
-			return nil, &ResError{
-				Error:  errors.New("id is Required").Error(),
-				Status: http.StatusBadRequest,
-			}
+		id := faker.UUIDDigit()
+		if params["id"] != nil {
+			id = params["id"].(string)
 		}
 
-		err = s.db.Set(entityName, []byte(params["id"].(string)), []byte(body))
+		err = s.db.Set(entityName, []byte(id), []byte(body))
 		if err != nil {
 			return nil, &ResError{
 				Error:  err.Error(),
@@ -170,7 +179,7 @@ func (s *RestSever) PostHandler(entityName string) func(*http.Request) ([]byte, 
 }
 
 func (s *RestSever) GetAllHandler(entityName string) handlerResponse {
-	return func(r *http.Request) ([]byte, *ResError) {
+	return func(r *http.Request) (any, *ResError) {
 		res, err := s.db.GetAll(entityName, nil)
 		if err != nil {
 			return nil, &ResError{
@@ -178,12 +187,12 @@ func (s *RestSever) GetAllHandler(entityName string) handlerResponse {
 				Status: http.StatusInternalServerError,
 			}
 		}
-		return flattenBytes(res), nil
+		return res, nil
 	}
 }
 
 func (s *RestSever) GetHandler(entityName string) handlerResponse {
-	return func(r *http.Request) ([]byte, *ResError) {
+	return func(r *http.Request) (any, *ResError) {
 		id := r.URL.Query().Get("id")
 		if id == "" {
 			return nil, &ResError{
@@ -203,7 +212,7 @@ func (s *RestSever) GetHandler(entityName string) handlerResponse {
 }
 
 func (s *RestSever) DeleteHandler(entityName string) handlerResponse {
-	return func(r *http.Request) ([]byte, *ResError) {
+	return func(r *http.Request) (any, *ResError) {
 		id := r.URL.Query().Get("id")
 		if id == "" {
 			return nil, &ResError{
@@ -211,7 +220,6 @@ func (s *RestSever) DeleteHandler(entityName string) handlerResponse {
 				Status: http.StatusBadRequest,
 			}
 		}
-
 		err := s.db.Delete(entityName, []byte(id))
 		if err != nil {
 			return nil, &ResError{
@@ -225,7 +233,7 @@ func (s *RestSever) DeleteHandler(entityName string) handlerResponse {
 }
 
 func (s *RestSever) PutHandler(entityName string) handlerResponse {
-	return func(r *http.Request) ([]byte, *ResError) {
+	return func(r *http.Request) (any, *ResError) {
 		id := r.URL.Query().Get("id")
 		if id == "" {
 			return nil, &ResError{
@@ -256,7 +264,7 @@ func (s *RestSever) PutHandler(entityName string) handlerResponse {
 }
 
 func (s *RestSever) PatchHandler(entityName string) handlerResponse {
-	return func(r *http.Request) ([]byte, *ResError) {
+	return func(r *http.Request) (any, *ResError) {
 		id := r.URL.Query().Get("id")
 		if id == "" {
 			return nil, &ResError{
@@ -295,26 +303,34 @@ type ResError struct {
 
 const SuccessMessage = "{\"message\": \"ok\"}"
 
-type handlerResponse func(*http.Request) ([]byte, *ResError)
+type handlerResponse func(*http.Request) (any, *ResError)
 
 // Helper function to return a json response
-func Response(fn func(*http.Request) ([]byte, *ResError)) func(http.ResponseWriter, *http.Request) {
+func Response(fn func(*http.Request) (any, *ResError)) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		data, err := fn(r)
+		log.Println("data", data)
 		if err != nil {
 			render.Status(r, err.Status)
 			render.JSON(w, r, map[string]string{"error": err.Error})
 		}
+
+		if reflect.TypeOf(data).Kind() == reflect.Slice {
+			var res []map[string]any
+			for _, v := range data.([][]byte) {
+				var params map[string]any
+				err := json.Unmarshal(v, &params)
+				if err != nil {
+					render.Status(r, http.StatusInternalServerError)
+					render.JSON(w, r, map[string]string{"error": "Failed to Parse Data"})
+					return
+				}
+				res = append(res, params)
+			}
+			render.JSON(w, r, res)
+			return
+		}
+
 		render.JSON(w, r, data)
 	}
-}
-
-func flattenBytes(twoDBytes [][]byte) []byte {
-	var result []byte
-
-	for _, b := range twoDBytes {
-		result = append(result, b...)
-	}
-
-	return result
 }

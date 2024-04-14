@@ -47,21 +47,42 @@
 		}
 
 		side {
-			position: sticky;
-			height: calc(100vh - 3.5rem);
+			position: fixed;
+			height: 100vh;
+      max-width: 700px;
 			top: 0;
-			padding: 1.5rem;
+      right: 0;
+      background-color: white;
+      overflow-y: scroll;
 			box-shadow: -1px 0 4px rgba(0, 0, 0, 0.1);
+      transition: width 300ms ease-in;
+      z-index: 1000;
 		}
 
+    side > div {
+      display: relative;
+      padding: 0.25rem 1rem;
+    }
+
 		side code {
+      overflow-x: scroll;
 			background-color: #c4c4c4;
 			color: black;
-			padding: 1rem;
 			border-radius: 0.25rem;
 			display: block;
 			margin-top: 1.5rem;
+      padding: 0.25rem;
 		}
+
+    side button {
+      position: sticky;
+      padding: 3px;
+      top: 10px;
+      left: 90%;
+      z-index: 10;
+      border: none;
+      border-radius: 0.25rem;
+    }
 
 		main {
 			padding: 0 1.5rem;
@@ -151,7 +172,7 @@
 		}
 
 		#modal-text-copied {
-			position: absolute;
+			position: fixed;
 			top: 15px;
 			left: 40%;
 			padding: 0.5rem;
@@ -159,8 +180,7 @@
 			color: white;
 			text-align: center;
 			font-weight: 300;
-			display: none;
-			transition: display 500ms ease-in;
+			transition: display 100ms ease-in;
 		}
 	</style>
 </head>
@@ -179,7 +199,7 @@
 		</div>
 	</header>
 	<section id="content">
-	<span id="modal-text-copied">Text Copied !</span>
+	<span id="modal-text-copied" style="display: none;">Text Copied !</span>
 		<main>
 			<h2>Documentation for your api.</h2>
 			<section id="entities">
@@ -188,8 +208,15 @@
 				<p> Count: {{.Count}}</p>
 				<p> Schema: </p>
 				<ul>
-					{{range $field, $type := .Schema}}
-					<li>{{$field}}: <code>{{$type}}</code></li>
+					{{range $index, $field := .Schema}}
+					  <li>
+              {{ $field.Name }}: {{ $field.Kind }}
+              <ul>
+					      {{range $key, $val := $field.Options}}
+                  <li>{{ $key }}: {{ $val }}</li>
+                {{end}}
+              </ul>
+            </li>
 					{{end}}
 				</ul>
 				<p> Endpoints: </p>
@@ -212,6 +239,8 @@
 							hx-target="#res-target"
 							hx-swap="innerHTML"
 							hx-indicator="#spinner"
+              hx-on::after-request="prettify()"
+              hx-on::before-request="openSide()"
 						>
 							send
 							<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
@@ -276,16 +305,19 @@
 				{{end}}
 			</section>
 		</main>
-		<side>
-			<h3>Response: </h3>
-			<svg width="20" height="20" xmlns="http://www.w3.org/2000/svg" id="spinner"
-				viewBox="0 0 512 512"><!--!Font Awesome Free 6.5.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2024 Fonticons, Inc.-->
-				<path
-					d="M304 48a48 48 0 1 0 -96 0 48 48 0 1 0 96 0zm0 416a48 48 0 1 0 -96 0 48 48 0 1 0 96 0zM48 304a48 48 0 1 0 0-96 48 48 0 1 0 0 96zm464-48a48 48 0 1 0 -96 0 48 48 0 1 0 96 0zM142.9 437A48 48 0 1 0 75 369.1 48 48 0 1 0 142.9 437zm0-294.2A48 48 0 1 0 75 75a48 48 0 1 0 67.9 67.9zM369.1 437A48 48 0 1 0 437 369.1 48 48 0 1 0 369.1 437z" />
-			</svg>
-			<code id="res-target">
-				< No Request submitted yet>
-			</code>
+		<side style="width: 0;">
+      <div>
+        <button onclick="closeSide()">Close</button>
+        <h3>Response: </h3>
+        <svg width="20" height="20" xmlns="http://www.w3.org/2000/svg" id="spinner"
+          viewBox="0 0 512 512"><!--!Font Awesome Free 6.5.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2024 Fonticons, Inc.-->
+          <path
+            d="M304 48a48 48 0 1 0 -96 0 48 48 0 1 0 96 0zm0 416a48 48 0 1 0 -96 0 48 48 0 1 0 96 0zM48 304a48 48 0 1 0 0-96 48 48 0 1 0 0 96zm464-48a48 48 0 1 0 -96 0 48 48 0 1 0 96 0zM142.9 437A48 48 0 1 0 75 369.1 48 48 0 1 0 142.9 437zm0-294.2A48 48 0 1 0 75 75a48 48 0 1 0 67.9 67.9zM369.1 437A48 48 0 1 0 437 369.1 48 48 0 1 0 369.1 437z" />
+        </svg>
+        <code id="res-target">
+            < No Request submitted yet>
+        </code>
+      </div>
 		</side>
 	</section>
 	<script src="https://unpkg.com/htmx.org@1.9.10"
@@ -297,12 +329,32 @@
 			const codeElm = document.getElementById(id);
 			const copyText = codeElm.querySelector('span');
 			navigator.clipboard.writeText(copyText.innerHTML);
-			document.getElementById('modal-text-copied').style.display = 'block';
+
 			clearTimeout(window.copiedTimemout);
+			document.getElementById('modal-text-copied').style.display = 'none';
+			document.getElementById('modal-text-copied').style.display = 'block';
+
 			window.copiedTimemout = setTimeout(() => {
 				document.getElementById('modal-text-copied').style.display = 'none';
-			}, 1000);
+			}, 500);
 		}
+
+    function prettify(details) {
+      const res = document.getElementById('res-target');
+      res.innerHTML = "<pre>" + JSON.stringify(JSON.parse(res.innerHTML), null, 4) + "</pre>";
+    }
+
+    function openSide() {
+      const side = document.querySelector('side');
+      side.style.width = '50%';
+      side.style.minWidth = '300px';
+    }
+
+    function closeSide() {
+      const side = document.querySelector('side');
+      side.style.width = '0';
+      side.style.minWidth = '0';
+    }
 	</script>
 </body>
 

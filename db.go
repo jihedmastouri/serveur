@@ -42,6 +42,10 @@ func (db *DB) Close() {
 	db.db.Close()
 }
 
+func (db *DB) Clear() {
+	db.db.DropAll()
+}
+
 func (db *DB) GetAll(entityname string, valid *Validtor) ([][]byte, error) {
 	result := make([][]byte, 0)
 	var err error
@@ -53,9 +57,11 @@ func (db *DB) GetAll(entityname string, valid *Validtor) ([][]byte, error) {
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
 			item := it.Item()
 			err = item.Value(func(v []byte) error {
-				for _, f := range valid.validate {
-					if !f(v) {
-						return nil
+				if valid != nil {
+					for _, f := range valid.validate {
+						if !f(v) {
+							return nil
+						}
 					}
 				}
 				result = append(result, v)
@@ -64,9 +70,11 @@ func (db *DB) GetAll(entityname string, valid *Validtor) ([][]byte, error) {
 			if err != nil {
 				return err
 			}
-			for _, f := range valid.terminate {
-				if f(result) {
-					break seeker
+			if valid != nil {
+				for _, f := range valid.terminate {
+					if f(result) {
+						break seeker
+					}
 				}
 			}
 		}

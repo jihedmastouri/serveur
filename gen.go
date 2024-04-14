@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"math/rand"
 	"sync"
 
@@ -70,26 +71,36 @@ func GenerateFakeData(schema []Field) (map[string]any, error) {
 func FillDatabase(entities []Entity, s Store) {
 	w := sync.WaitGroup{}
 	for _, e := range entities {
+		w.Add(1)
+		log.Println("Generating fake data for entity:", e.Name)
 		go func(e Entity, w *sync.WaitGroup) {
-			w.Add(1)
-			m, err := GenerateFakeData(e.Schema)
-			if err != nil {
-				fmt.Println(err)
-				return
-			}
-			if m["id"] == nil {
-				m["id"] = faker.UUIDDigit()
-			}
-			id := m["id"].(string)
+			for i := 0; i < e.Count; i++ {
+				m, err := GenerateFakeData(e.Schema)
+				if err != nil {
+					log.Println(err)
+					return
+				}
 
-			b, err := json.Marshal(m)
-			if err != nil {
-				fmt.Println(err)
-				return
-			}
+				if m["id"] == nil {
+					m["id"] = faker.UUIDDigit()
+				}
+				id := m["id"].(string)
 
-			s.Set(e.Name, []byte(id), b)
+				b, err := json.Marshal(m)
+				if err != nil {
+					fmt.Println(err)
+					return
+				}
+
+				err = s.Set(e.Name, []byte(id), b)
+				if err != nil {
+					log.Println(err)
+					return
+				}
+			}
+			w.Done()
 		}(e, &w)
 	}
 	w.Wait()
+	log.Println("Done!")
 }
