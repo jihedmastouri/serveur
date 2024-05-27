@@ -19,6 +19,9 @@ type DB struct {
 	db *badger.DB
 }
 
+// Validtor is a struct that contains two slices of functions.
+// validate functions are used to apply a filter on the result.
+// terminate functions are used to stop the iteration over the data.
 type Validtor struct {
 	validate  []func([]byte) bool
 	terminate []func([][]byte) bool

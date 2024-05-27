@@ -8,13 +8,12 @@ import (
 	"sync"
 
 	"github.com/go-faker/faker/v4"
+	"github.com/go-faker/faker/v4/pkg/options"
 )
 
 // Returns a fake value for a given field
 func GetFake(f Field) (any, error) {
 	switch f.Kind {
-	case StringType:
-		return faker.Name(), nil
 	case NumberType:
 		val, _ := faker.RandomInt(0, 100)
 		return val, nil
@@ -24,6 +23,8 @@ func GetFake(f Field) (any, error) {
 		} else {
 			return false, nil
 		}
+	case StringType:
+		return faker.Paragraph(), nil
 	case NameType:
 		return faker.Name(), nil
 	case UsernameType:
@@ -46,8 +47,6 @@ func GetFake(f Field) (any, error) {
 		return faker.GetAddress(), nil
 	case PhoneType:
 		return faker.Phonenumber(), nil
-	case ParagraphType:
-		return faker.Paragraph(), nil
 	default:
 		s := fmt.Sprintf("Unknown Field Type : %s", f.Kind)
 		return nil, fmt.Errorf(s)
@@ -103,4 +102,9 @@ func FillDatabase(entities []Entity, s Store) {
 	}
 	w.Wait()
 	log.Println("Done!")
+}
+
+func getStringOptions(f Field) *options.Options {
+	opts := options.Options{}
+	return &opts
 }

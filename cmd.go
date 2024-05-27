@@ -16,6 +16,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// There are 3 sub-commands + the root command:
+// - gen: Generate fake data from a schema file
+// - check: Validate a data file against a schema file
+// - init: Initialize a new schema file
+
 var genCmd = &cobra.Command{
 	Use:       "gen",
 	Short:     "Generate fake data from a schema file",
@@ -251,7 +256,7 @@ A field can be one of these types:
 					}
 
 					prevSchema := db.getSchema()
-					isPrevSchemaValid := ValidateSchema(entities, prevSchema)
+					isPrevSchemaValid := ValidateSchema(prevSchema, entities)
 					if !isPrevSchemaValid || isForceRefresh {
 						// Clear the database and fill it with the new data
 						db.Clear()

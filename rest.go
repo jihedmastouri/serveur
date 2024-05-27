@@ -1,12 +1,15 @@
 package main
 
 import (
+	"embed"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"html/template"
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"reflect"
 	"time"
 
@@ -110,6 +113,8 @@ func AddStaticFiles(path string) func(*RestSever) {
 // Middleware: Adds a home page to the server similar to Swagger
 func AddHomePage(schemaPath string) func(*RestSever) {
 	return func(s *RestSever) {
+		// go:embed templates/*
+		var tmpls embed.FS
 		s.mux.Get("/", func(w http.ResponseWriter, r *http.Request) {
 			// Define the data to be passed to the template
 			page := struct {
@@ -126,7 +131,7 @@ func AddHomePage(schemaPath string) func(*RestSever) {
 			// 	"kindOf": reflect.TypeOf,
 			// }).Parse(`{{ . | kindOf }}`))
 
-			tmpl := template.Must(template.ParseFiles("./assets/home-template.gohtmltmpl"))
+			tmpl := template.Must(template.ParseFS(tmpls, "./home.gohtmltempl"))
 
 			err := tmpl.Execute(w, page)
 			if err != nil {
@@ -134,6 +139,10 @@ func AddHomePage(schemaPath string) func(*RestSever) {
 				return
 			}
 		})
+
+		// go:embed assets/*
+		var assets embed.FS
+		s.mux.Handle("/assets/*", http.FileServer(http.FS(assets)))
 	}
 }
 
