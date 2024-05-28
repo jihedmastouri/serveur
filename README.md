@@ -3,7 +3,7 @@
 Inspired by `json-server`, **Serveur** eliminates the need to manually write data (db.json). Instead, you write a schema file and **Serveur** will take care of the `REST`.
 
 <p align="center">
-  <img alt="AI generated image of a gofer as a waiter" src="./assets/serveur.webp" height="300" />
+  <img alt="AI generated image of a gofer as a waiter" src="./imgs/serveur.webp" height="300" />
 </p>
 
 

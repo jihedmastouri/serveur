@@ -1,3 +1,4 @@
+{{ define "index" }}
 <!DOCTYPE html>
 <html>
 
@@ -54,7 +55,7 @@
         <ul class="endpoints">
           {{ template "getAllHome" . }}
           {{ template "getOneHome" . }}
-          {{ template "postHome" . }}
+          {{ template "post" . }}
           {{ template "putHome" . }}
           {{ template "patchHome" . }}
           {{ template "deleteHome" . }}
@@ -87,3 +88,4 @@
 </body>
 
 </html>
+{{ end }}

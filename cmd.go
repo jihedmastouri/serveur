@@ -222,7 +222,7 @@ A field can be one of these types:
 			entities,
 			AddLogger(),
 			AddHomePage(schemaPath),
-			AddStaticFiles(staticPath),
+			// AddStaticFiles(staticPath),
 		)
 		server.InitRouter()
 		srv := &http.Server{
