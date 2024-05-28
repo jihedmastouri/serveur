@@ -1,10 +1,13 @@
 package main
 
 import (
+	"embed"
 	"encoding/json"
 	"errors"
 	"html/template"
 	"io"
+	"io/fs"
+	"log"
 	"log/slog"
 	"net/http"
 	"reflect"
@@ -16,6 +19,12 @@ import (
 	"github.com/go-chi/render"
 	"github.com/go-faker/faker/v4"
 )
+
+//go:embed templates/*
+var tmpls embed.FS
+
+//go:embed assets/*
+var assets embed.FS
 
 type RestSever struct {
 	db       Store
@@ -103,7 +112,7 @@ func AddStaticFiles(path string) func(*RestSever) {
 		return func(s *RestSever) {}
 	}
 	return func(s *RestSever) {
-		s.mux.Handle("/*", http.FileServer(http.Dir(path)))
+		s.mux.Handle("/static/", http.FileServer(http.Dir(path)))
 	}
 }
 
@@ -122,18 +131,22 @@ func AddHomePage(schemaPath string) func(*RestSever) {
 				URL:      r.URL.String(),
 			}
 
-			// tmpl := template.Must(template.New("example").Funcs(template.FuncMap{
-			// 	"kindOf": reflect.TypeOf,
-			// }).Parse(`{{ . | kindOf }}`))
+			tmpl := template.Must(template.ParseFS(tmpls, "templates/home/*.html"))
 
-			tmpl := template.Must(template.ParseFiles("./assets/home-template.gohtmltmpl"))
-
-			err := tmpl.Execute(w, page)
+			err := tmpl.ExecuteTemplate(w, "index", page)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
 		})
+
+		subFS, err := fs.Sub(assets, "assets")
+		if err != nil {
+			ErrExit("Home Page: Couldn't get the assets:", err)
+		}
+
+		fileServer := http.FileServer(http.FS(subFS))
+		s.mux.Handle("/assets/*", http.StripPrefix("/assets/", fileServer))
 	}
 }
 
