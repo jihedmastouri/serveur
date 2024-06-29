@@ -19,6 +19,9 @@ type DB struct {
 	db *badger.DB
 }
 
+// Validtor is a struct that contains two slices of functions.
+// validate functions are used to apply a filter on the result.
+// terminate functions are used to stop the iteration over the data.
 type Validtor struct {
 	validate  []func([]byte) bool
 	terminate []func([][]byte) bool
@@ -42,7 +45,7 @@ func (db *DB) Close() {
 	db.db.Close()
 }
 
-func (db *DB) Drop() {
+func (db *DB) Clear() {
 	db.db.DropAll()
 }
 
@@ -57,9 +60,11 @@ func (db *DB) GetAll(entityname string, valid *Validtor) ([][]byte, error) {
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
 			item := it.Item()
 			err = item.Value(func(v []byte) error {
-				for _, f := range valid.validate {
-					if !f(v) {
-						return nil
+				if valid != nil {
+					for _, f := range valid.validate {
+						if !f(v) {
+							return nil
+						}
 					}
 				}
 				result = append(result, v)
@@ -68,9 +73,11 @@ func (db *DB) GetAll(entityname string, valid *Validtor) ([][]byte, error) {
 			if err != nil {
 				return err
 			}
-			for _, f := range valid.terminate {
-				if f(result) {
-					break seeker
+			if valid != nil {
+				for _, f := range valid.terminate {
+					if f(result) {
+						break seeker
+					}
 				}
 			}
 		}

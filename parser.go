@@ -85,7 +85,9 @@ func ParseFile(path string) ([]Entity, error) {
 		return nil, err
 	}
 	for i, entity := range entities {
-		entities[i].Count = 1
+		if entity.Count == 0 {
+			entities[i].Count = 1
+		}
 		for j, field := range entity.Schema {
 			if field.Kind == "" {
 				entities[i].Schema[j].Kind = StringType

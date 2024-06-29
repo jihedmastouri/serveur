@@ -1,16 +1,25 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/cobra"
 )
+
+// There are 3 sub-commands + the root command:
+// - gen: Generate fake data from a schema file
+// - check: Validate a data file against a schema file
+// - init: Initialize a new schema file
 
 var genCmd = &cobra.Command{
 	Use:       "gen",
@@ -35,26 +44,30 @@ var genCmd = &cobra.Command{
 			ErrExit("Couldn't create the output file", err)
 		}
 
-		encoder := json.NewEncoder(file)
-
 		entities, err := ParseFile(schemaPath)
 		if err != nil {
 			ErrExit("Couldn't parse the schema file", err)
 		}
 
+		encoder := json.NewEncoder(file)
+		var wg *sync.WaitGroup
 		for _, entity := range entities {
-			go func(entity Entity) {
-				data, err := GenerateFakeData(entity.Schema)
-				if err != nil {
-					ErrExit("Couldn't generate fake data", err)
+			wg.Add(1)
+			go func(entity Entity, wg *sync.WaitGroup) {
+				for i := 0; i < entity.Count; i++ {
+					data, err := GenerateFakeData(entity.Schema)
+					if err != nil {
+						ErrExit("Couldn't generate fake data", err)
+					}
+					err = encoder.Encode(data)
+					if err != nil {
+						ErrExit("Couldn't write to the output file", err)
+					}
 				}
-				err = encoder.Encode(data)
-				if err != nil {
-					ErrExit("Couldn't write to the output file", err)
-				}
-			}(entity)
+				wg.Done()
+			}(entity, wg)
 		}
-
+		wg.Wait()
 	},
 }
 
@@ -143,15 +156,12 @@ A field can be one of these types:
 - paragraph/pg
 - ref
 	`,
-	Example:   "serveur ./schema.json --port 8080",
-	ValidArgs: []string{
-		// file or url
+	Example: "serveur ./schema.json --port 8080",
+	Args:    cobra.MaximumNArgs(1),
+	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return []string{"schema-url"}, cobra.ShellCompDirectiveFilterFileExt
 	},
-	Version: "v0.0.0",
-	PreRun: func(cmd *cobra.Command, args []string) {
-		// logic to make sure that the flags are valid
-		// and that we don't need flag for providing file and a url
-	},
+	Version: "v0.1.0",
 	Run: func(cmd *cobra.Command, args []string) {
 		isInMemory, err := cmd.Flags().GetBool("memmory")
 		if err != nil {
@@ -191,6 +201,8 @@ A field can be one of these types:
 			ErrExit("Couldn't parse the schema file", err)
 		}
 
+		log.Println(entities)
+
 		isForceRefresh, err := cmd.Flags().GetBool("refresh")
 		if err != nil {
 			ErrExit("Couldn't get the refresh flag", err)
@@ -199,7 +211,7 @@ A field can be one of these types:
 		prevSchema := db.getSchema()
 		isPrevSchemaValid := ValidateSchema(entities, prevSchema)
 		if !isPrevSchemaValid || isForceRefresh {
-			db.Drop()
+			db.Clear()
 			db.storeSchema(entities)
 			FillDatabase(entities, db)
 		}
@@ -210,7 +222,7 @@ A field can be one of these types:
 			entities,
 			AddLogger(),
 			AddHomePage(schemaPath),
-			AddStaticFiles(staticPath),
+			// AddStaticFiles(staticPath),
 		)
 		server.InitRouter()
 		srv := &http.Server{
@@ -223,51 +235,62 @@ A field can be one of these types:
 			log.Fatal(srv.ListenAndServe())
 		}()
 
-		for {
-			event := <-watcher.Events
+		go func() {
+			for {
+				event := <-watcher.Events
 
-			if event.Has(fsnotify.Rename) {
-				// HACK: The only way I found to makr sure I keep watching the file :(
-				watcher.Remove(event.Name)
-				watcher.Add(event.Name)
-			}
-
-			// To not spam the server with multiple events
-			time.Sleep(1 * time.Second)
-
-			// If the file is written to or renamed (which is the case when the file is saved in an editor)
-			if event.Has(fsnotify.Write) || event.Has(fsnotify.Rename) {
-				entities, err := ParseFile(event.Name)
-				if err != nil {
-					ErrExit("Couldn't parse the schema file", err)
+				if event.Has(fsnotify.Rename) {
+					// HACK: The only way I found to makr sure I keep watching the file :(
+					watcher.Remove(event.Name)
+					watcher.Add(event.Name)
 				}
 
-				prevSchema := db.getSchema()
-				isPrevSchemaValid := ValidateSchema(entities, prevSchema)
-				if !isPrevSchemaValid || isForceRefresh {
-					// Close the previous db and create a new one
-					db.Close()
-					db = NewDB(isInMemory, dbPath)
-					FillDatabase(entities, db)
-					db.storeSchema(entities)
+				// To not spam the server with multiple events
+				time.Sleep(1 * time.Second)
+
+				// If the file is written to or renamed (which is the case when the file is saved in an editor)
+				if event.Has(fsnotify.Write) || event.Has(fsnotify.Rename) {
+					entities, err := ParseFile(event.Name)
+					if err != nil {
+						ErrExit("Couldn't parse the schema file", err)
+					}
+
+					prevSchema := db.getSchema()
+					isPrevSchemaValid := ValidateSchema(prevSchema, entities)
+					if !isPrevSchemaValid || isForceRefresh {
+						// Clear the database and fill it with the new data
+						db.Clear()
+						db.Close()
+						db = NewDB(isInMemory, dbPath)
+						FillDatabase(entities, db)
+						db.storeSchema(entities)
+					}
+
+					// Close the previous server and create a new one
+					server := NewRestServer(
+						db,
+						entities,
+						AddLogger(),
+						AddHomePage(schemaPath),
+						AddStaticFiles(staticPath),
+					)
+					server.InitRouter()
+					srv.Close()
+					srv.Handler = server.mux
+
+					go func() {
+						log.Fatal(srv.ListenAndServe())
+					}()
 				}
-
-				// Close the previous server and create a new one
-				server := NewRestServer(
-					db,
-					entities,
-					AddLogger(),
-					AddHomePage(schemaPath),
-					AddStaticFiles(staticPath),
-				)
-				server.InitRouter()
-				srv.Close()
-				srv.Handler = server.mux
-
-				go func() {
-					log.Fatal(srv.ListenAndServe())
-				}()
 			}
-		}
+		}()
+
+		// gracefully shutdown the server
+		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+		defer stop()
+		<-ctx.Done()
+		log.Println("Shutting down the server...")
+		db.Close()
+		srv.Shutdown(ctx)
 	},
 }
