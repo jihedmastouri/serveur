@@ -199,6 +199,7 @@ A field can be one of these types:
 		prevSchema := db.getSchema()
 		isPrevSchemaValid := ValidateSchema(entities, prevSchema)
 		if !isPrevSchemaValid || isForceRefresh {
+			db.Drop()
 			db.storeSchema(entities)
 			FillDatabase(entities, db)
 		}

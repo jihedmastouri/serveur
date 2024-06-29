@@ -9,10 +9,10 @@ import (
 
 type Store interface {
 	GetAll(entityname string, validator *Validtor) ([][]byte, error)
-	Get(entityname string, key []byte) ([]byte, error)
-	Set(entityname string, key []byte, value []byte) error
-	Delete(entityname string, key []byte) error
-	Patch(entityname string, key []byte, value []byte) error
+	Get(entityname, key string) ([]byte, error)
+	Set(entityname, key string, value []byte) error
+	Delete(entityname, key string) error
+	Patch(entityname, key string, value []byte) error
 }
 
 type DB struct {
@@ -24,14 +24,14 @@ type Validtor struct {
 	terminate []func([][]byte) bool
 }
 
-const privateSchema = "__schema"
+const privateSchema = "__schema__used"
 
 func NewDB(isInMemory bool, dbPath string) *DB {
 	opt := badger.DefaultOptions(dbPath)
 	if isInMemory {
-		opt = opt.WithInMemory(true)
+		opt = badger.DefaultOptions("").WithInMemory(true)
 	}
-	db, err := badger.Open(opt)
+	db, err := badger.Open(opt.WithLogger(nil))
 	if err != nil {
 		log.Fatal("Couldn't Open Database")
 	}
@@ -40,6 +40,10 @@ func NewDB(isInMemory bool, dbPath string) *DB {
 
 func (db *DB) Close() {
 	db.db.Close()
+}
+
+func (db *DB) Drop() {
+	db.db.DropAll()
 }
 
 func (db *DB) GetAll(entityname string, valid *Validtor) ([][]byte, error) {
@@ -78,7 +82,7 @@ func (db *DB) GetAll(entityname string, valid *Validtor) ([][]byte, error) {
 	return result, nil
 }
 
-func (db *DB) Get(entityname string, key []byte) ([]byte, error) {
+func (db *DB) Get(entityname string, key string) ([]byte, error) {
 	var result []byte
 	err := db.db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get(append([]byte(entityname+"-"), key...))
@@ -100,7 +104,7 @@ func (db *DB) Get(entityname string, key []byte) ([]byte, error) {
 	return result, nil
 }
 
-func (db *DB) Set(entityname string, key []byte, value []byte) error {
+func (db *DB) Set(entityname string, key string, value []byte) error {
 	err := db.db.Update(func(txn *badger.Txn) error {
 		err := txn.Set(append([]byte(entityname+"-"), key...), value)
 		return err
@@ -111,7 +115,7 @@ func (db *DB) Set(entityname string, key []byte, value []byte) error {
 	return nil
 }
 
-func (db *DB) Delete(entityname string, key []byte) error {
+func (db *DB) Delete(entityname string, key string) error {
 	err := db.db.Update(func(txn *badger.Txn) error {
 		err := txn.Delete(append([]byte(entityname+"-"),
 			key...))
@@ -123,21 +127,21 @@ func (db *DB) Delete(entityname string, key []byte) error {
 	return nil
 }
 
-func (db *DB) Patch(entityname string, key []byte, valye []byte) error {
+func (db *DB) Patch(entityname string, key string, value []byte) error {
 	err := db.db.Update(func(txn *badger.Txn) error {
 		item, err := txn.Get(append([]byte(entityname+"-"), key...))
 		if err != nil {
 			return err
 		}
-		var value []byte
+		var val []byte
 		err = item.Value(func(v []byte) error {
-			value = v
+			val = v
 			return nil
 		})
 		if err != nil {
 			return err
 		}
-		value = append(value, valye...)
+		value = append(value, value...)
 		err = txn.Set(append([]byte(entityname+"-"), key...), value)
 		return err
 	})

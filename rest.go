@@ -158,7 +158,7 @@ func (s *RestSever) PostHandler(entityName string) func(*http.Request) ([]byte, 
 			}
 		}
 
-		err = s.db.Set(entityName, []byte(params["id"].(string)), []byte(body))
+		err = s.db.Set(entityName, params["id"].(string), []byte(body))
 		if err != nil {
 			return nil, &ResError{
 				Error:  err.Error(),
@@ -191,7 +191,7 @@ func (s *RestSever) GetHandler(entityName string) handlerResponse {
 				Status: http.StatusBadRequest,
 			}
 		}
-		res, err := s.db.Get(entityName, []byte(id))
+		res, err := s.db.Get(entityName, id)
 		if err != nil {
 			return nil, &ResError{
 				Error:  err.Error(),
@@ -212,7 +212,7 @@ func (s *RestSever) DeleteHandler(entityName string) handlerResponse {
 			}
 		}
 
-		err := s.db.Delete(entityName, []byte(id))
+		err := s.db.Delete(entityName, id)
 		if err != nil {
 			return nil, &ResError{
 				Error:  err.Error(),
@@ -243,7 +243,7 @@ func (s *RestSever) PutHandler(entityName string) handlerResponse {
 		}
 		defer r.Body.Close()
 
-		err = s.db.Set(entityName, []byte(id), body)
+		err = s.db.Set(entityName, id, body)
 		if err != nil {
 			return nil, &ResError{
 				Error:  err.Error(),
@@ -273,7 +273,7 @@ func (s *RestSever) PatchHandler(entityName string) handlerResponse {
 		}
 		defer r.Body.Close()
 
-		err = s.db.Patch(entityName, []byte(id), body)
+		err = s.db.Patch(entityName, id, body)
 		if err != nil {
 			return nil, &ResError{
 				Error:  err.Error(),

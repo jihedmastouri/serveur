@@ -88,7 +88,7 @@ func FillDatabase(entities []Entity, s Store) {
 				return
 			}
 
-			s.Set(e.Name, []byte(id), b)
+			s.Set(e.Name, id, b)
 		}(e, &w)
 	}
 	w.Wait()
